@@ -20,19 +20,67 @@ useHead({
   ],
 });
 
-const messages = ref<Message[]>([
-  {
-    id: 1,
-    role: "assistant",
-    text: "你好！发一句话给我，我会通过 Nuxt 服务端接口返回模拟回复。",
-  },
-]);
+const storageKey = "nuxt-study-chat-messages";
+const initialMessage: Message = {
+  id: 1,
+  role: "assistant",
+  text: "你好！发一句话给我，我会通过 Nuxt 服务端接口返回模拟回复。",
+};
+const messages = ref<Message[]>([{ ...initialMessage }]);
 const draft = ref("");
 const pending = ref(false);
 const errorMessage = ref("");
 const messagesEl = ref<HTMLElement | null>(null);
 const inputEl = ref<HTMLTextAreaElement | null>(null);
 let nextId = 2;
+let isHydrated = false;
+
+// 挂载后读取浏览器缓存，保持服务端与客户端的初始渲染一致。
+onMounted(() => {
+  try {
+    const storedMessages = localStorage.getItem(storageKey);
+    if (storedMessages) {
+      const parsedMessages: unknown = JSON.parse(storedMessages);
+      if (
+        Array.isArray(parsedMessages) &&
+        parsedMessages.every(
+          (message) =>
+            typeof message === "object" &&
+            message !== null &&
+            Number.isSafeInteger(message.id) &&
+            message.id > 0 &&
+            message.id < Number.MAX_SAFE_INTEGER &&
+            (message.role === "user" || message.role === "assistant") &&
+            typeof message.text === "string",
+        ) &&
+        new Set(parsedMessages.map((message) => message.id)).size ===
+          parsedMessages.length
+      ) {
+        messages.value = parsedMessages;
+      }
+    }
+  } catch (error) {
+    console.warn("无法恢复聊天记录，将继续使用当前消息。", error);
+  }
+
+  nextId = messages.value.reduce((max, message) => Math.max(max, message.id), 1) + 1;
+  isHydrated = true;
+  void scrollToLatest();
+});
+
+// 恢复完成后，再监听数组内消息的新增和修改。
+watch(
+  messages,
+  (value) => {
+    if (!isHydrated) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(value));
+    } catch (error) {
+      console.warn("无法保存聊天记录，当前聊天仍可继续。", error);
+    }
+  },
+  { deep: true },
+);
 
 async function scrollToLatest() {
   await nextTick();
