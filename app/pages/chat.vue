@@ -3,6 +3,8 @@ type Message = {
   id: number;
   role: "user" | "assistant";
   text: string;
+  status?: "sending" | "sent" | "failed";
+  error?: string;
 };
 
 type ChatResponse = {
@@ -51,19 +53,35 @@ onMounted(() => {
             message.id > 0 &&
             message.id < Number.MAX_SAFE_INTEGER &&
             (message.role === "user" || message.role === "assistant") &&
-            typeof message.text === "string",
+            typeof message.text === "string" &&
+            (message.status === undefined ||
+              message.status === "sending" ||
+              message.status === "sent" ||
+              message.status === "failed") &&
+            (message.error === undefined || typeof message.error === "string"),
         ) &&
         new Set(parsedMessages.map((message) => message.id)).size ===
           parsedMessages.length
       ) {
-        messages.value = parsedMessages;
+        messages.value = parsedMessages.map((message) => {
+          if (message.role !== "user") return message;
+          if (message.status === "sending") {
+            return {
+              ...message,
+              status: "failed",
+              error: "页面刷新时请求尚未完成，请重新发送。",
+            };
+          }
+          return { ...message, status: message.status ?? "sent" };
+        });
       }
     }
   } catch (error) {
     console.warn("无法恢复聊天记录，将继续使用当前消息。", error);
   }
 
-  nextId = messages.value.reduce((max, message) => Math.max(max, message.id), 1) + 1;
+  nextId =
+    messages.value.reduce((max, message) => Math.max(max, message.id), 1) + 1;
   isHydrated = true;
   void scrollToLatest();
 });
